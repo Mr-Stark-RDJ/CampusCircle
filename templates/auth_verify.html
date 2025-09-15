@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-6 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Verify OTP</h5>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">College Email</label>
+            <input type="email" name="college_email" class="form-control" value="{{ email }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">OTP</label>
+            <input type="text" name="otp" class="form-control" required>
+          </div>
+          <button class="btn btn-success w-100">Verify & Create Account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

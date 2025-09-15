@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">Create Event</h5>
+        <form method="post">
+          <div class="mb-2">
+            <label class="form-label">Title</label>
+            <input name="title" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Date</label>
+            <input type="datetime-local" name="date" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="3" required></textarea>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="published" id="pub">
+            <label class="form-check-label" for="pub">Publish now</label>
+          </div>
+          <button class="btn btn-primary w-100">Save</button>
+        </form>
+        <hr>
+        <div class="d-grid gap-2">
+          <a href="{{ url_for('admin_seed') }}" class="btn btn-outline-secondary">Add Dummy Alumni & Events</a>
+          <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger">Logout Admin</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">Events</h5>
+        <div class="small mb-2">Total Verified Alumni: {{ total_alumni }}</div>
+        {% if events %}
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead><tr><th>Title</th><th>Date</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {% for e in events %}
+              <tr>
+                <td>{{ e.title }}</td>
+                <td>{{ e.date.strftime('%d %b %Y %H:%M') }}</td>
+                <td>{% if e.published %}<span class="badge bg-success">Published</span>{% else %}<span class="badge bg-secondary">Draft</span>{% endif %}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_event_toggle', id=str(e._id)) }}">Toggle</a>
+                  <a class="btn btn-sm btn-outline-danger" href="{{ url_for('admin_event_delete', id=str(e._id)) }}">Delete</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No events yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+body { background: #0d1117; color: #e6edf3 }
+.navbar, footer { background: #0b0f14 }
+.card { border: 1px solid rgba(255,255,255,0.06); background: #111827 }
+.table { color: #e6edf3 }
+.table thead th { border-bottom-color: rgba(255,255,255,0.1) }
+.alert { margin-bottom: 0.5rem }
+#cc-chat { position: fixed; bottom: 20px; right: 20px; z-index: 1000 }
+#cc-toggle { width: 56px; height: 56px; border-radius: 50%; background: #0d6efd; color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: 0 10px 20px rgba(13,110,253,.35); font-size: 20px }
+#cc-panel { width: 320px; max-height: 420px; background: #111827; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: none }
+#cc-messages { height: 300px; overflow-y: auto; background: #0b0f14; border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.06) }
+.cc-msg { padding: 8px 10px; border-radius: 10px; margin: 6px 0; max-width: 85% }
+.cc-user { background: #0d6efd; color: #fff; margin-left: auto }
+.cc-bot { background: #1f2937; color: #e6edf3; margin-right: auto }

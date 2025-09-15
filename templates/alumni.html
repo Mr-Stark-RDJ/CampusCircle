@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Alumni Directory</h5>
+    <form class="row g-2 mb-3" method="get">
+      <div class="col-12 col-md-4">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search name, company, LinkedIn">
+      </div>
+      <div class="col-6 col-md-3">
+        <select name="year" class="form-select">
+          <option value="">Year</option>
+          {% for yy in years %}
+          <option value="{{ yy }}" {% if y|int==yy %}selected{% endif %}>{{ yy }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <select name="branch" class="form-select">
+          <option value="">Branch</option>
+          {% for br in branches %}
+          <option value="{{ br }}" {% if b==br %}selected{% endif %}>{{ br }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-2 d-grid">
+        <button class="btn btn-primary">Filter</button>
+      </div>
+    </form>
+    {% if items %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead><tr><th>Name</th><th>Company</th><th>Year</th><th>Branch</th><th>LinkedIn</th><th>Phone</th></tr></thead>
+        <tbody>
+          {% for a in items %}
+          <tr>
+            <td>{{ a.full_name or a.personal_email }}</td>
+            <td>{{ a.company }}</td>
+            <td>{{ a.graduation_year or '-' }}</td>
+            <td>{{ a.branch or '-' }}</td>
+            <td>{% if a.linkedin %}<a href="{{ a.linkedin }}" target="_blank">Profile</a>{% else %}-{% endif %}</td>
+            <td>{{ a.mobile or a.phone or '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted">No records found.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

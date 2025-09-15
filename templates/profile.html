@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Your Profile</h5>
+        <form method="post" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Full Name</label>
+            <input type="text" name="full_name" value="{{ u.full_name }}" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Branch</label>
+            <input type="text" name="branch" value="{{ u.branch }}" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Graduation Year</label>
+            <input type="number" name="graduation_year" value="{{ u.graduation_year }}" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Company</label>
+            <input type="text" name="company" value="{{ u.company }}" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" value="{{ u.phone }}" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Mobile</label>
+            <input type="text" name="mobile" value="{{ u.mobile }}" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">LinkedIn</label>
+            <input type="url" name="linkedin" value="{{ u.linkedin }}" class="form-control">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-success">Save</button>
+          </div>
+        </form>
+        <hr class="my-4">
+        <div class="small text-muted">College Email: {{ u.college_email }} | Personal Email: {{ u.personal_email }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
