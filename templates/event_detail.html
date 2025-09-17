@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h3 class="mb-3">{{ e.title }}</h3>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <span class="badge bg-primary">{{ e.date.strftime('%A, %d %b %Y · %I:%M %p') }}</span>
+          {% if e.venue %}<span class="badge bg-secondary">{{ e.venue }}</span>{% endif %}
+          {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode|capitalize }}</span>{% endif %}
+        </div>
+        <p class="mb-4">{{ e.description }}</p>
+        {% if e.join_url %}
+        <a class="btn btn-success" href="{{ e.join_url }}" target="_blank" rel="noopener">Register / Join</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

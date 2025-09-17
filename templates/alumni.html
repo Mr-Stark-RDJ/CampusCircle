@@ -1,53 +1,45 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card shadow-sm">
-  <div class="card-body">
-    <h5 class="card-title mb-3">Alumni Directory</h5>
-    <form class="row g-2 mb-3" method="get">
-      <div class="col-12 col-md-4">
-        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search name, company, LinkedIn">
-      </div>
-      <div class="col-6 col-md-3">
-        <select name="year" class="form-select">
-          <option value="">Year</option>
-          {% for yy in years %}
-          <option value="{{ yy }}" {% if y|int==yy %}selected{% endif %}>{{ yy }}</option>
+<div class="row justify-content-center g-4">
+  <div class="col-12 col-xl-10">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-md-end mb-3">
+          <h5 class="card-title mb-0">Alumni Directory</h5>
+          <form class="d-flex gap-2" method="get">
+            <input class="form-control" type="text" name="q" value="{{ q }}" placeholder="Search name">
+            <input class="form-control" type="text" name="year" value="{{ year }}" placeholder="Year (e.g., 2025)">
+            <input class="form-control" type="text" name="branch" value="{{ branch }}" placeholder="Branch">
+            <button class="btn btn-primary">Filter</button>
+          </form>
+        </div>
+        {% if not logged_in %}
+        <div class="alert alert-info d-flex justify-content-between align-items-center">
+          <div>Are you an alumnus? Join the list now.</div>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('register') }}">Register</a>
+        </div>
+        {% endif %}
+        {% if rows %}
+        <div class="list-group">
+          {% for a in rows %}
+          <div class="list-group-item py-3">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">{{ a.full_name or '—' }}</div>
+                <div class="small text-muted">{{ a.graduation_year or '—' }} · {{ a.branch or '—' }} · {{ a.company or '—' }}</div>
+                {% if a.linkedin %}
+                <a href="{{ a.linkedin }}" target="_blank" class="small">LinkedIn</a>
+                {% endif %}
+              </div>
+            </div>
+          </div>
           {% endfor %}
-        </select>
+        </div>
+        {% else %}
+        <div class="text-muted">No results.</div>
+        {% endif %}
       </div>
-      <div class="col-6 col-md-3">
-        <select name="branch" class="form-select">
-          <option value="">Branch</option>
-          {% for br in branches %}
-          <option value="{{ br }}" {% if b==br %}selected{% endif %}>{{ br }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-12 col-md-2 d-grid">
-        <button class="btn btn-primary">Filter</button>
-      </div>
-    </form>
-    {% if items %}
-    <div class="table-responsive">
-      <table class="table align-middle">
-        <thead><tr><th>Name</th><th>Company</th><th>Year</th><th>Branch</th><th>LinkedIn</th><th>Phone</th></tr></thead>
-        <tbody>
-          {% for a in items %}
-          <tr>
-            <td>{{ a.full_name or a.personal_email }}</td>
-            <td>{{ a.company }}</td>
-            <td>{{ a.graduation_year or '-' }}</td>
-            <td>{{ a.branch or '-' }}</td>
-            <td>{% if a.linkedin %}<a href="{{ a.linkedin }}" target="_blank">Profile</a>{% else %}-{% endif %}</td>
-            <td>{{ a.mobile or a.phone or '-' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     </div>
-    {% else %}
-    <div class="text-muted">No records found.</div>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

@@ -1,21 +1,25 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="row justify-content-center g-5">
-  <div class="col-12 col-lg-10">
+  <div class="col-12 col-xxl-9">
     <div class="row g-5">
       <div class="col-12 col-lg-7">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h5 class="card-title">Upcoming Events</h5>
+            <h5 class="card-title mb-4">Upcoming Events</h5>
             {% if upcoming %}
             <ul class="list-group list-group-flush">
               {% for e in upcoming %}
-              <li class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-start">
-                <div>
-                  <div class="fw-semibold">{{ e.title }}</div>
-                  <div class="text-muted small">{{ e.description }}</div>
+              <li class="list-group-item py-3 d-flex flex-column flex-md-row justify-content-between align-items-start">
+                <div class="pe-md-4">
+                  <a href="{{ url_for('event_detail', slug=e.slug) }}" class="fw-semibold fs-5 text-decoration-none">{{ e.title }}</a>
+                  <div class="text-muted small mt-1">{{ e.description }}</div>
+                  <div class="mt-2 d-flex flex-wrap gap-2">
+                    <span class="badge bg-primary">{{ e.date.strftime('%d %b %Y, %I:%M %p') }}</span>
+                    {% if e.venue %}<span class="badge bg-secondary">{{ e.venue }}</span>{% endif %}
+                    {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode|capitalize }}</span>{% endif %}
+                  </div>
                 </div>
-                <span class="badge bg-primary rounded-pill align-self-md-center mt-2 mt-md-0">{{ e.date.strftime('%d %b %Y') }}</span>
               </li>
               {% endfor %}
             </ul>
@@ -28,13 +32,13 @@
       <div class="col-12 col-lg-5">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h5 class="card-title">Latest Announcements</h5>
+            <h5 class="card-title mb-4">Latest Announcements</h5>
             {% if latest %}
             <ul class="list-group list-group-flush">
               {% for e in latest %}
-              <li class="list-group-item">
-                <div class="fw-semibold">{{ e.title }}</div>
-                <div class="small text-muted">{{ e.description }}</div>
+              <li class="list-group-item py-3">
+                <a href="{{ url_for('event_detail', slug=e.slug) }}" class="fw-semibold text-decoration-none">{{ e.title }}</a>
+                <div class="small text-muted mt-1">{{ e.description }}</div>
               </li>
               {% endfor %}
             </ul>
