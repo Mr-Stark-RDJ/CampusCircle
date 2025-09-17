@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="center-page">
+  <div class="card shadow-sm auth-card">
+    <div class="card-body">
+      <h5 class="card-title">Forgot Password</h5>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" required>
+        </div>
+        <button class="btn btn-primary w-100">Send OTP</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

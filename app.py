@@ -1,5 +1,5 @@
-import os, smtplib, ssl, secrets, string
-from datetime import datetime, timedelta
+import os, smtplib, ssl, secrets, string, sys
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from pymongo import MongoClient, ASCENDING, DESCENDING
@@ -12,12 +12,16 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "dev")
 
-mongo = MongoClient(os.getenv("MONGO_URL"))
+MONGO_URL = os.getenv("MONGO_URL")
+if not MONGO_URL:
+    sys.exit("MONGO_URL not set.")
+mongo = MongoClient(MONGO_URL)
 db = mongo["campus_circle"]
 users = db["users"]
 events = db["events"]
 pending = db["pending_registrations"]
 messages = db["messages"]
+resets = db["password_resets"]
 
 SMTP_HOST = os.getenv("BREVO_SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("BREVO_SMTP_PORT", "587"))
@@ -29,23 +33,20 @@ ADMIN_NOTIFY_EMAIL = os.getenv("ADMIN_NOTIFY_EMAIL", EMAIL_FROM or SMTP_USER)
 COLLEGE_DOMAIN = os.getenv("COLLEGE_EMAIL_DOMAIN", "")
 
 def _normalize_app_password(pw: str) -> str:
-    # Strip surrounding quotes and remove spaces so Gmail app passwords always work
     return (pw or "").strip().strip('"').replace(" ", "")
 
 def send_mail(to, subject, body):
     msg = EmailMessage()
-    # With Gmail, From must be your Gmail address; use EMAIL_FROM if it equals SMTP_USER
     from_addr = EMAIL_FROM if EMAIL_FROM else SMTP_USER
     msg["From"] = from_addr
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
-
     pw = _normalize_app_password(SMTP_PASS_RAW)
-    context = ssl.create_default_context()
+    ctx = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
-        s.starttls(context=context)
+        s.starttls(context=ctx)
         s.ehlo()
         s.login(SMTP_USER, pw)
         s.send_message(msg)
@@ -62,8 +63,11 @@ def require_admin():
 
 @app.route("/")
 def home():
-    today = datetime.utcnow().date()
-    up = list(events.find({"published": True, "date": {"$gte": datetime(today.year, today.month, today.day)}}).sort("date", ASCENDING).limit(6))
+    if not require_login():
+        return redirect(url_for("login"))
+    today = datetime.now(timezone.utc).date()
+    start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    up = list(events.find({"published": True, "date": {"$gte": start}}).sort("date", ASCENDING).limit(6))
     latest = list(events.find({"published": True}).sort("created_at", DESCENDING).limit(6))
     return render_template("home.html", upcoming=up, latest=latest)
 
@@ -104,7 +108,7 @@ def contact():
         if not full_name or not email or not msg:
             flash("All fields are required.", "danger")
             return redirect(url_for("contact"))
-        doc = {"name": full_name, "email": email, "message": msg, "created_at": datetime.utcnow()}
+        doc = {"name": full_name, "email": email, "message": msg, "created_at": datetime.now(timezone.utc)}
         messages.insert_one(doc)
         try:
             send_mail(ADMIN_NOTIFY_EMAIL, "New Contact Message", f"From: {full_name} <{email}>\n\n{msg}")
@@ -126,21 +130,45 @@ def register():
         if users.find_one({"$or":[{"college_email": college_email},{"personal_email": personal_email}]}):
             flash("Account already exists.", "danger")
             return redirect(url_for("register"))
+        now = datetime.now(timezone.utc)
+        doc = pending.find_one({"college_email": college_email})
+        if doc and doc.get("locked_until") and now < doc["locked_until"]:
+            flash("Too many attempts. Try again later.", "danger")
+            return redirect(url_for("register"))
+        if doc and doc.get("window_start") and now - doc["window_start"] > timedelta(hours=1):
+            pending.update_one({"_id": doc["_id"]}, {"$set":{"window_start": now, "resend_count": 0}})
+            doc["window_start"] = now
+            doc["resend_count"] = 0
+        if doc and doc.get("last_sent") and now - doc["last_sent"] < timedelta(seconds=60):
+            flash("Wait 60 seconds before requesting another OTP.", "danger")
+            session["pending_college_email"] = college_email
+            return redirect(url_for("verify"))
+        if doc and doc.get("resend_count",0) >= 5:
+            flash("OTP request limit reached. Try after 1 hour.", "danger")
+            session["pending_college_email"] = college_email
+            return redirect(url_for("verify"))
         code = "".join(secrets.choice(string.digits) for _ in range(6))
         code_hash = generate_password_hash(code)
-        pending.delete_many({"college_email": college_email})
-        pending.insert_one({
-            "college_email": college_email,
-            "personal_email": personal_email,
-            "password_hash": generate_password_hash(password),
-            "otp_hash": code_hash,
-            "expires_at": datetime.utcnow() + timedelta(minutes=10),
-            "created_at": datetime.utcnow()
-        })
+        pending.update_one(
+            {"college_email": college_email},
+            {"$set":{
+                "college_email": college_email,
+                "personal_email": personal_email,
+                "password_hash": generate_password_hash(password),
+                "otp_hash": code_hash,
+                "expires_at": now + timedelta(minutes=10),
+                "created_at": now,
+                "last_sent": now
+            },
+             "$inc":{"resend_count":1},
+             "$setOnInsert":{"attempts":0,"window_start": now}
+            },
+            upsert=True
+        )
         try:
             send_mail(college_email, "Campus Circle OTP", f"Your OTP is {code}. It expires in 10 minutes.")
             flash("OTP sent to your college email.", "success")
-        except Exception as e:
+        except:
             flash("Email sending failed. Check Gmail SMTP/app password.", "danger")
         session["pending_college_email"] = college_email
         return redirect(url_for("verify"))
@@ -158,19 +186,31 @@ def verify():
         if not doc:
             flash("No pending registration found.", "danger")
             return redirect(url_for("register"))
-        if datetime.utcnow() > doc["expires_at"]:
+        now = datetime.now(timezone.utc)
+        if doc.get("locked_until") and now < doc["locked_until"]:
+            flash("Too many attempts. Try again later.", "danger")
+            return redirect(url_for("verify"))
+        if now > doc["expires_at"]:
             pending.delete_one({"_id": doc["_id"]})
             flash("OTP expired.", "danger")
             return redirect(url_for("register"))
         if not check_password_hash(doc["otp_hash"], code):
-            flash("Invalid OTP.", "danger")
+            attempts = int(doc.get("attempts",0)) + 1
+            upd = {"$set":{"attempts": attempts}}
+            if attempts >= 3:
+                upd["$set"]["locked_until"] = now + timedelta(minutes=15)
+            pending.update_one({"_id": doc["_id"]}, upd)
+            if attempts >= 3:
+                flash("Too many wrong attempts. Locked for 15 minutes.", "danger")
+            else:
+                flash("Invalid OTP.", "danger")
             return redirect(url_for("verify"))
         u = {
             "college_email": doc["college_email"],
             "personal_email": doc["personal_email"],
             "password_hash": doc["password_hash"],
-            "verified_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "verified_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(timezone.utc),
             "role": "alumni",
             "full_name": "",
             "phone": "",
@@ -206,34 +246,67 @@ def login():
 def logout():
     session.clear()
     flash("Logged out.", "success")
-    return redirect(url_for("home"))
+    return redirect(url_for("login"))
 
-@app.route("/profile", methods=["GET","POST"])
-def profile():
-    if not require_login():
-        return redirect(url_for("login"))
-    u = current_user()
+@app.route("/forgot", methods=["GET","POST"])
+def forgot():
     if request.method == "POST":
-        full_name = request.form.get("full_name","").strip()
-        phone = request.form.get("phone","").strip()
-        mobile = request.form.get("mobile","").strip()
-        company = request.form.get("company","").strip()
-        year = request.form.get("graduation_year","").strip()
-        linkedin = request.form.get("linkedin","").strip()
-        branch = request.form.get("branch","").strip()
-        yr = int(year) if year.isdigit() else None
-        users.update_one({"_id": u["_id"]}, {"$set":{
-            "full_name": full_name,
-            "phone": phone,
-            "mobile": mobile,
-            "company": company,
-            "graduation_year": yr,
-            "linkedin": linkedin,
-            "branch": branch
-        }})
-        flash("Profile updated.", "success")
-        return redirect(url_for("profile"))
-    return render_template("profile.html", u=u)
+        email = request.form.get("email","").strip().lower()
+        u = users.find_one({"$or":[{"personal_email": email},{"college_email": email}]})
+        if not u:
+            flash("If the email exists, an OTP has been sent.", "info")
+            return redirect(url_for("forgot"))
+        now = datetime.now(timezone.utc)
+        doc = resets.find_one({"email": email})
+        if doc and doc.get("last_sent") and now - doc["last_sent"] < timedelta(seconds=60):
+            flash("Wait 60 seconds before requesting another OTP.", "danger")
+            return redirect(url_for("forgot"))
+        code = "".join(secrets.choice(string.digits) for _ in range(6))
+        code_hash = generate_password_hash(code)
+        resets.update_one(
+            {"email": email},
+            {"$set":{"otp_hash": code_hash, "expires_at": now + timedelta(minutes=10), "last_sent": now, "attempts":0}},
+            upsert=True
+        )
+        try:
+            send_mail(email, "Campus Circle Password Reset OTP", f"Your OTP is {code}. It expires in 10 minutes.")
+        except:
+            pass
+        flash("If the email exists, an OTP has been sent.", "info")
+        return redirect(url_for("reset"))
+    return render_template("auth_forgot.html")
+
+@app.route("/reset", methods=["GET","POST"])
+def reset():
+    if request.method == "POST":
+        email = request.form.get("email","").strip().lower()
+        otp = request.form.get("otp","").strip()
+        newp = request.form.get("password","")
+        doc = resets.find_one({"email": email})
+        if not doc:
+            flash("Request a new OTP.", "danger")
+            return redirect(url_for("forgot"))
+        now = datetime.now(timezone.utc)
+        if now > doc["expires_at"]:
+            resets.delete_one({"_id": doc["_id"]})
+            flash("OTP expired.", "danger")
+            return redirect(url_for("forgot"))
+        if not check_password_hash(doc["otp_hash"], otp):
+            att = int(doc.get("attempts",0)) + 1
+            upd = {"$set":{"attempts": att}}
+            if att >= 3:
+                upd["$set"]["expires_at"] = now
+            resets.update_one({"_id": doc["_id"]}, upd)
+            flash("Invalid OTP.", "danger")
+            return redirect(url_for("reset"))
+        users.update_one(
+            {"$or":[{"personal_email": email},{"college_email": email}]},
+            {"$set":{"password_hash": generate_password_hash(newp)}}
+        )
+        resets.delete_one({"_id": doc["_id"]})
+        flash("Password updated. Login now.", "success")
+        return redirect(url_for("login"))
+    return render_template("auth_reset.html")
 
 @app.route("/admin/login", methods=["GET","POST"])
 def admin_login():
@@ -251,7 +324,7 @@ def admin_login():
 def admin_logout():
     session.pop("admin", None)
     flash("Admin logged out.", "success")
-    return redirect(url_for("home"))
+    return redirect(url_for("login"))
 
 @app.route("/admin", methods=["GET","POST"])
 def admin():
@@ -264,15 +337,16 @@ def admin():
         pub = request.form.get("published") == "on"
         try:
             dt = datetime.fromisoformat(date)
+            dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
         except:
-            dt = datetime.utcnow()
+            dt = datetime.now(timezone.utc)
         events.insert_one({
             "title": title,
             "description": desc,
             "date": dt,
             "published": pub,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         })
         flash("Event saved.", "success")
         return redirect(url_for("admin"))
@@ -286,7 +360,7 @@ def admin_event_toggle(id):
         return redirect(url_for("admin_login"))
     e = events.find_one({"_id": ObjectId(id)})
     if e:
-        events.update_one({"_id": e["_id"]}, {"$set":{"published": not bool(e.get("published")), "updated_at": datetime.utcnow()}})
+        events.update_one({"_id": e["_id"]}, {"$set":{"published": not bool(e.get("published")), "updated_at": datetime.now(timezone.utc)}})
     return redirect(url_for("admin"))
 
 @app.route("/admin/event/<id>/delete")
@@ -315,8 +389,8 @@ def admin_seed():
             "college_email": ce,
             "personal_email": pe,
             "password_hash": generate_password_hash("Pass@1234"),
-            "verified_at": datetime.utcnow(),
-            "created_at": datetime.utcnow(),
+            "verified_at": datetime.now(timezone.utc),
+            "created_at": datetime.now(timezone.utc),
             "role": "alumni",
             "full_name": fn,
             "phone": "9" + "".join(secrets.choice(string.digits) for _ in range(9)),
@@ -326,11 +400,11 @@ def admin_seed():
             "linkedin": "https://linkedin.com/in/" + fn.lower().replace(" ",""),
             "branch": br
         })
-    base = datetime.utcnow()
+    base = datetime.now(timezone.utc)
     events.insert_many([
-        {"title":"Annual Alumni Meet", "description":"Reunion and networking", "date": base + timedelta(days=14), "published": True, "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()},
-        {"title":"Mentorship Drive", "description":"Alumni mentoring signups", "date": base + timedelta(days=30), "published": True, "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()},
-        {"title":"Webinar: Careers in AI", "description":"Industry talk", "date": base + timedelta(days=45), "published": False, "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+        {"title":"Annual Alumni Meet", "description":"Reunion and networking", "date": base + timedelta(days=14), "published": True, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)},
+        {"title":"Mentorship Drive", "description":"Alumni mentoring signups", "date": base + timedelta(days=30), "published": True, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)},
+        {"title":"Webinar: Careers in AI", "description":"Industry talk", "date": base + timedelta(days=45), "published": False, "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)}
     ])
     flash("Dummy alumni and events added.", "success")
     return redirect(url_for("admin"))
@@ -348,8 +422,9 @@ def api_chatbot():
     if "login" in q:
         return jsonify({"answer":"Login with your email and password on the Login page. You can use either your college or personal email."})
     if "event" in q:
-        today = datetime.utcnow().date()
-        up = list(events.find({"published": True, "date": {"$gte": datetime(today.year, today.month, today.day)}}).sort("date", ASCENDING).limit(3))
+        today = datetime.now(timezone.utc).date()
+        start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+        up = list(events.find({"published": True, "date": {"$gte": start}}).sort("date", ASCENDING).limit(3))
         if not up:
             return jsonify({"answer":"There are no upcoming published events yet. Check back soon."})
         txt = "Upcoming events: " + "; ".join([f"{e['title']} on {e['date'].strftime('%d-%b-%Y')}" for e in up])

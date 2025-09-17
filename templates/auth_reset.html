@@ -3,21 +3,21 @@
 <div class="center-page">
   <div class="card shadow-sm auth-card">
     <div class="card-body">
-      <h5 class="card-title">Register</h5>
+      <h5 class="card-title">Reset Password</h5>
       <form method="post">
         <div class="mb-3">
-          <label class="form-label">College Email</label>
-          <input type="email" name="college_email" class="form-control" required>
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" required>
         </div>
         <div class="mb-3">
-          <label class="form-label">Personal Email</label>
-          <input type="email" name="personal_email" class="form-control" required>
+          <label class="form-label">OTP</label>
+          <input type="text" name="otp" class="form-control" required>
         </div>
         <div class="mb-3">
-          <label class="form-label">Password</label>
+          <label class="form-label">New Password</label>
           <input type="password" name="password" class="form-control" required minlength="6">
         </div>
-        <button class="btn btn-primary w-100">Get OTP</button>
+        <button class="btn btn-success w-100">Update Password</button>
       </form>
     </div>
   </div>

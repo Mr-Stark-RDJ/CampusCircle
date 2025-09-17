@@ -29,15 +29,13 @@
         {% endif %}
         {% if session.get('admin') %}
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/admin') %}active{% endif %}" href="{{ url_for('admin') }}">Admin</a></li>
-        {% else %}
-        <li class="nav-item"><a class="nav-link {% if request.path=='/admin/login' %}active{% endif %}" href="{{ url_for('admin_login') }}">Admin</a></li>
         {% endif %}
       </ul>
     </div>
   </div>
 </nav>
 
-<div class="container py-4">
+<main class="page-main container py-5">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="mb-3">
@@ -48,11 +46,11 @@
     {% endif %}
   {% endwith %}
   {% block content %}{% endblock %}
-</div>
+</main>
 
 <footer class="bg-dark text-light py-4 mt-auto">
   <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between">
-    <div>© {{ now().year if false else '' }} Campus Circle</div>
+    <div>© Campus Circle</div>
     <div class="small">Binary Breakers • Smart Education</div>
   </div>
 </footer>
