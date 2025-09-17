@@ -6,14 +6,15 @@
       <h5 class="card-title">Verify OTP</h5>
       <form method="post">
         <div class="mb-3">
-          <label class="form-label">College Email</label>
-          <input type="email" name="college_email" class="form-control" value="{{ email }}" placeholder="name@college.edu" required>
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" value="{{ email or '' }}" placeholder="you@example.com" required>
         </div>
         <div class="mb-3">
           <label class="form-label">OTP</label>
           <input type="text" name="otp" class="form-control" placeholder="6-digit code" required>
         </div>
-        <button class="btn btn-success w-100">Verify & Create Account</button>
+        <button class="btn btn-success w-100 mb-2">Verify OTP</button>
+        <a class="btn btn-outline-secondary w-100" href="{{ url_for('resend_reset', email=email) }}">Resend OTP</a>
       </form>
     </div>
   </div>

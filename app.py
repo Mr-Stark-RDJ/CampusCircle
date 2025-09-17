@@ -1,5 +1,6 @@
 import os, smtplib, ssl, secrets, string, sys
 from datetime import datetime, timedelta, timezone
+import secrets, string
 from email.message import EmailMessage
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from pymongo import MongoClient, ASCENDING, DESCENDING
@@ -53,6 +54,9 @@ def send_mail(to, subject, body):
 
 def require_login():
     return "user_id" in session
+
+def generate_otp():
+    return "".join(secrets.choice(string.digits) for _ in range(6))
 
 def current_user():
     uid = session.get("user_id")
@@ -253,60 +257,125 @@ def forgot():
     if request.method == "POST":
         email = request.form.get("email","").strip().lower()
         u = users.find_one({"$or":[{"personal_email": email},{"college_email": email}]})
+        flash("If the email exists, an OTP has been sent.", "info")
         if not u:
-            flash("If the email exists, an OTP has been sent.", "info")
-            return redirect(url_for("forgot"))
+            return redirect(url_for("forgot", email=email))
         now = datetime.now(timezone.utc)
         doc = resets.find_one({"email": email})
         if doc and doc.get("last_sent") and now - doc["last_sent"] < timedelta(seconds=60):
-            flash("Wait 60 seconds before requesting another OTP.", "danger")
-            return redirect(url_for("forgot"))
-        code = "".join(secrets.choice(string.digits) for _ in range(6))
-        code_hash = generate_password_hash(code)
+            return redirect(url_for("verify_reset", email=email))
+        code = generate_otp()
         resets.update_one(
             {"email": email},
-            {"$set":{"otp_hash": code_hash, "expires_at": now + timedelta(minutes=10), "last_sent": now, "attempts":0}},
+            {"$set":{
+                "otp_hash": generate_password_hash(code),
+                "expires_at": now + timedelta(minutes=10),
+                "last_sent": now,
+                "attempts": 0
+            },
+             "$unset":{"token":"","token_expires":""},
+             "$setOnInsert":{"window_start": now, "resend_count": 0}
+            },
             upsert=True
         )
         try:
-            send_mail(email, "Campus Circle Password Reset OTP", f"Your OTP is {code}. It expires in 10 minutes.")
+            send_mail(email, "Password Reset OTP", f"Your OTP is {code}. It expires in 10 minutes.")
         except:
             pass
-        flash("If the email exists, an OTP has been sent.", "info")
-        return redirect(url_for("reset"))
-    return render_template("auth_forgot.html")
+        return redirect(url_for("verify_reset", email=email))
+    pref = request.args.get("email","")
+    return render_template("auth_forgot.html", email=pref)
 
-@app.route("/reset", methods=["GET","POST"])
-def reset():
+@app.route("/reset/verify", methods=["GET","POST"])
+def verify_reset():
+    email = (request.args.get("email") or request.form.get("email") or "").strip().lower()
     if request.method == "POST":
-        email = request.form.get("email","").strip().lower()
         otp = request.form.get("otp","").strip()
-        newp = request.form.get("password","")
         doc = resets.find_one({"email": email})
         if not doc:
             flash("Request a new OTP.", "danger")
-            return redirect(url_for("forgot"))
+            return redirect(url_for("forgot", email=email))
         now = datetime.now(timezone.utc)
         if now > doc["expires_at"]:
             resets.delete_one({"_id": doc["_id"]})
             flash("OTP expired.", "danger")
-            return redirect(url_for("forgot"))
+            return redirect(url_for("forgot", email=email))
         if not check_password_hash(doc["otp_hash"], otp):
-            att = int(doc.get("attempts",0)) + 1
-            upd = {"$set":{"attempts": att}}
-            if att >= 3:
+            attempts = int(doc.get("attempts",0)) + 1
+            upd = {"$set":{"attempts": attempts}}
+            if attempts >= 3:
                 upd["$set"]["expires_at"] = now
             resets.update_one({"_id": doc["_id"]}, upd)
             flash("Invalid OTP.", "danger")
-            return redirect(url_for("reset"))
+            return redirect(url_for("verify_reset", email=email))
+        token = secrets.token_urlsafe(24)
+        resets.update_one({"_id": doc["_id"]}, {"$set":{"token": token, "token_expires": now + timedelta(minutes=10)}})
+        return redirect(url_for("password_reset", token=token))
+    return render_template("auth_reset_verify.html", email=email)
+
+@app.route("/reset/resend")
+def resend_reset():
+    email = request.args.get("email","").strip().lower()
+    if not email:
+        return redirect(url_for("forgot"))
+    now = datetime.now(timezone.utc)
+    doc = resets.find_one({"email": email})
+    if doc and doc.get("last_sent") and now - doc["last_sent"] < timedelta(seconds=60):
+        flash("Wait 60 seconds before requesting another OTP.", "danger")
+        return redirect(url_for("verify_reset", email=email))
+    if doc and doc.get("window_start") and now - doc["window_start"] < timedelta(hours=1) and int(doc.get("resend_count",0)) >= 5:
+        flash("OTP request limit reached. Try after 1 hour.", "danger")
+        return redirect(url_for("verify_reset", email=email))
+    if not doc or not doc.get("window_start") or now - doc["window_start"] > timedelta(hours=1):
+        window_start = now
+        resend_count = 0
+    else:
+        window_start = doc["window_start"]
+        resend_count = int(doc.get("resend_count",0))
+    code = generate_otp()
+    resets.update_one(
+        {"email": email},
+        {"$set":{
+            "otp_hash": generate_password_hash(code),
+            "expires_at": now + timedelta(minutes=10),
+            "last_sent": now,
+            "window_start": window_start
+        }, "$setOnInsert":{"attempts":0}, "$inc":{"resend_count":1}},
+        upsert=True
+    )
+    try:
+        send_mail(email, "Password Reset OTP", f"Your OTP is {code}. It expires in 10 minutes.")
+    except:
+        pass
+    flash("OTP sent.", "success")
+    return redirect(url_for("verify_reset", email=email))
+
+@app.route("/reset/password", methods=["GET","POST"])
+def password_reset():
+    token = request.args.get("token","")
+    doc = resets.find_one({"token": token})
+    if not doc:
+        flash("Invalid or expired link.", "danger")
+        return redirect(url_for("forgot"))
+    now = datetime.now(timezone.utc)
+    if now > doc.get("token_expires", now):
+        resets.delete_one({"_id": doc["_id"]})
+        flash("Link expired.", "danger")
+        return redirect(url_for("forgot"))
+    if request.method == "POST":
+        p1 = request.form.get("password","")
+        p2 = request.form.get("confirm","")
+        if p1 != p2 or len(p1) < 6:
+            flash("Passwords must match and be at least 6 characters.", "danger")
+            return redirect(url_for("password_reset", token=token))
         users.update_one(
-            {"$or":[{"personal_email": email},{"college_email": email}]},
-            {"$set":{"password_hash": generate_password_hash(newp)}}
+            {"$or":[{"personal_email": doc["email"]},{"college_email": doc["email"]}]},
+            {"$set":{"password_hash": generate_password_hash(p1)}}
         )
         resets.delete_one({"_id": doc["_id"]})
         flash("Password updated. Login now.", "success")
         return redirect(url_for("login"))
-    return render_template("auth_reset.html")
+    return render_template("auth_reset_password.html")
 
 @app.route("/admin/login", methods=["GET","POST"])
 def admin_login():
@@ -408,6 +477,33 @@ def admin_seed():
     ])
     flash("Dummy alumni and events added.", "success")
     return redirect(url_for("admin"))
+
+@app.route("/profile", methods=["GET","POST"])
+def profile():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    u = users.find_one({"_id": ObjectId(session["user_id"])})
+    if request.method == "POST":
+        full_name = request.form.get("full_name","").strip()
+        phone = request.form.get("phone","").strip()
+        mobile = request.form.get("mobile","").strip()
+        company = request.form.get("company","").strip()
+        year = request.form.get("graduation_year","").strip()
+        linkedin = request.form.get("linkedin","").strip()
+        branch = request.form.get("branch","").strip()
+        yr = int(year) if year.isdigit() else None
+        users.update_one({"_id": u["_id"]}, {"$set":{
+            "full_name": full_name,
+            "phone": phone,
+            "mobile": mobile,
+            "company": company,
+            "graduation_year": yr,
+            "linkedin": linkedin,
+            "branch": branch
+        }})
+        flash("Profile updated.", "success")
+        return redirect(url_for("profile"))
+    return render_template("profile.html", u=u)
 
 @app.route("/api/chatbot", methods=["POST"])
 def api_chatbot():

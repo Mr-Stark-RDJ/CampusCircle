@@ -3,21 +3,13 @@
 <div class="center-page">
   <div class="card shadow-sm auth-card">
     <div class="card-body">
-      <h5 class="card-title">Login</h5>
+      <h5 class="card-title">Admin Login</h5>
       <form method="post">
         <div class="mb-3">
-          <label class="form-label">Email</label>
-          <input type="email" name="email" class="form-control" required>
+          <label class="form-label">Admin Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Enter admin password" required>
         </div>
-        <div class="mb-3">
-          <label class="form-label">Password</label>
-          <input type="password" name="password" class="form-control" required>
-        </div>
-        <button class="btn btn-primary w-100 mb-2">Login</button>
-        <div class="d-flex justify-content-between small">
-          <a href="{{ url_for('register') }}">Create account</a>
-          <a href="{{ url_for('forgot') }}">Forgot password?</a>
-        </div>
+        <button class="btn btn-primary w-100">Login</button>
       </form>
     </div>
   </div>
