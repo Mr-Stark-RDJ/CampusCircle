@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-sm"><div class="card-body">
+      <h3 class="mb-2">{{ b.title }}</h3>
+      <div class="small text-muted mb-3">{{ b.created_at.strftime('%A, %d %b %Y · %I:%M %p') }}</div>
+      <div style="white-space:pre-wrap">{{ b.body }}</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

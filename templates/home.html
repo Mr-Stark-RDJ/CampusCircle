@@ -14,11 +14,11 @@
                 <div class="pe-md-4">
                   <a href="{{ url_for('event_detail', slug=e.slug) }}" class="fw-semibold fs-5 text-decoration-none">{{ e.title }}</a>
                   <div class="text-muted small mt-1">{{ e.description }}</div>
-                  <div class="mt-2 d-flex flex-wrap gap-2">
-                    <span class="badge bg-primary">{{ e.date.strftime('%d %b %Y, %I:%M %p') }}</span>
-                    {% if e.venue %}<span class="badge bg-secondary">{{ e.venue }}</span>{% endif %}
-                    {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode|capitalize }}</span>{% endif %}
-                  </div>
+                </div>
+                <div class="mt-2 mt-md-0">
+                  <span class="badge bg-primary">{{ e.date.strftime('%d %b %Y, %I:%M %p') }}</span>
+                  {% if e.venue %}<span class="badge bg-secondary">{{ e.venue }}</span>{% endif %}
+                  {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode }}</span>{% endif %}
                 </div>
               </li>
               {% endfor %}
@@ -29,16 +29,17 @@
           </div>
         </div>
       </div>
+
       <div class="col-12 col-lg-5">
         <div class="card shadow-sm h-100">
           <div class="card-body">
             <h5 class="card-title mb-4">Latest Announcements</h5>
-            {% if latest %}
+            {% if announcements %}
             <ul class="list-group list-group-flush">
-              {% for e in latest %}
+              {% for b in announcements %}
               <li class="list-group-item py-3">
-                <a href="{{ url_for('event_detail', slug=e.slug) }}" class="fw-semibold text-decoration-none">{{ e.title }}</a>
-                <div class="small text-muted mt-1">{{ e.description }}</div>
+                <a href="{{ url_for('blog_detail', slug=b.slug) }}" class="text-decoration-none fw-semibold">{{ b.title }}</a>
+                <div class="small text-muted mt-1">{{ b.excerpt }}</div>
               </li>
               {% endfor %}
             </ul>
@@ -48,6 +49,7 @@
           </div>
         </div>
       </div>
+
     </div>
   </div>
 </div>

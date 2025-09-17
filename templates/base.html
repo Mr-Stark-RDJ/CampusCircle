@@ -19,6 +19,7 @@
       <ul class="navbar-nav ms-auto">
         <li class="nav-item"><a class="nav-link {% if request.path=='/' %}active{% endif %}" href="{{ url_for('home') }}">Home</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path.startswith('/alumni') %}active{% endif %}" href="{{ url_for('alumni') }}">Alumni</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.path.startswith('/blog') %}active{% endif %}" href="{{ url_for('blog_list') }}">Blog</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path=='/about' %}active{% endif %}" href="{{ url_for('about') }}">About</a></li>
         <li class="nav-item"><a class="nav-link {% if request.path=='/contact' %}active{% endif %}" href="{{ url_for('contact') }}">Contact</a></li>
         {% if session.get('user_id') %}

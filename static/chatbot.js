@@ -1,28 +1,57 @@
 (function () {
-  const t = document.getElementById("cc-toggle");
-  const p = document.getElementById("cc-panel");
-  const m = document.getElementById("cc-messages");
-  const i = document.getElementById("cc-input");
-  const s = document.getElementById("cc-send");
-  if (!t || !p) return;
-  t.addEventListener("click", () => {
-    p.style.display = p.style.display === "block" ? "none" : "block";
-  });
-  function add(text, cls) {
-    const div = document.createElement("div");
-    div.className = cls || "text-light";
-    div.style.margin = "6px 0";
-    div.innerText = text;
-    m.appendChild(div); m.scrollTop = m.scrollHeight;
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "class") e.className = attrs[k]; else if (k === "text") e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { e.appendChild(c); });
+    return e;
   }
-  s.addEventListener("click", () => {
-    const q = i.value.trim();
-    if (!q) return;
-    add("You: " + q, "text-info");
-    if (/event|upcoming|latest/i.test(q)) add("Bot: Check Home for Upcoming Events, click an item for full details.", "text-light");
-    else if (/alumni|directory/i.test(q)) add("Bot: Open the Alumni page to browse and filter.", "text-light");
-    else if (/register/i.test(q)) add("Bot: Use Register to verify your college email via OTP.", "text-light");
-    else add("Bot: Try asking about events, alumni, or register.", "text-light");
-    i.value = "";
-  });
-})()
+
+  function mount() {
+    if (document.getElementById("cc-chat-fab") || document.getElementById("cc-chat")) return;
+
+    var fab = el("div", { id: "cc-chat-fab", title: "Chat" }, [el("span", { text: "✦" })]);
+
+    var head = el("div", { class: "cc-head" }, [
+      el("div", { class: "cc-title", text: "Assistant" }),
+      el("button", { class: "cc-close", "aria-label": "Close", type: "button" }, [el("span", { text: "×" })])
+    ]);
+
+    var body = el("div", { class: "cc-body" }, [
+      el("div", { class: "cc-msg", text: "Hi! Ask about events, alumni, or registration." })
+    ]);
+
+    var input = el("div", { class: "cc-input" }, [
+      el("input", { type: "text", placeholder: "Type a message…" }),
+      el("button", { type: "button", text: "Send" })
+    ]);
+
+    var win = el("div", { id: "cc-chat" }, [head, body, input]);
+
+    fab.addEventListener("click", function () {
+      win.classList.toggle("open");
+    });
+    head.querySelector(".cc-close").addEventListener("click", function () {
+      win.classList.remove("open");
+    });
+
+    input.querySelector("button").addEventListener("click", function () {
+      var val = input.querySelector("input").value.trim();
+      if (!val) return;
+      var mine = el("div", { class: "cc-msg me", text: val });
+      body.appendChild(mine);
+      input.querySelector("input").value = "";
+      body.scrollTop = body.scrollHeight;
+    });
+
+    document.body.appendChild(fab);
+    document.body.appendChild(win);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mount);
+  } else {
+    mount();
+  }
+})();
