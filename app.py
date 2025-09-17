@@ -6,14 +6,25 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv  # <-- NEW
 
 # ---------- App & DB ----------
+load_dotenv()  # <-- NEW: load .env from project root
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "dev-secret")
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+MONGO_URL = os.getenv("MONGO_URL")
+if not MONGO_URL:
+    raise RuntimeError(
+        "MONGO_URL is not set. Put it in your .env (with ?authSource=admin) "
+        "or export it in the environment."
+    )
+
+print("[DB] Using MONGO_URL:", re.sub(r":([^@/]+)@", ":****@", MONGO_URL))
+
 client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+client.admin.command("ping")
 db = client["campus_circle"]
 users = db["users"]
 events = db["events"]
