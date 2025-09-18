@@ -1,55 +1,59 @@
 {% extends "base.html" %}
+{% block title %}Home • Campus Circle{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center g-5">
-  <div class="col-12 col-xxl-9">
-    <div class="row g-5">
-      <div class="col-12 col-lg-7">
-        <div class="card shadow-sm h-100">
-          <div class="card-body">
-            <h5 class="card-title mb-4">Upcoming Events</h5>
-            {% if upcoming %}
-            <ul class="list-group list-group-flush">
-              {% for e in upcoming %}
-              <li class="list-group-item py-3 d-flex flex-column flex-md-row justify-content-between align-items-start">
-                <div class="pe-md-4">
-                  <a href="{{ url_for('event_detail', slug=e.slug) }}" class="fw-semibold fs-5 text-decoration-none">{{ e.title }}</a>
-                  <div class="text-muted small mt-1">{{ e.description }}</div>
+<div class="container my-4">
+  <!-- Bigger logo -->
+  <img class="hero-logo" alt="Campus Circle logo"
+       src="{{ url_for('static', filename='brand/campus-circle-mark-512.png') }}">
+
+  <div class="row g-4 mt-2">
+    <div class="col-md-7">
+      <div class="card bg-dark-subtle border-0 shadow-sm">
+        <div class="card-body">
+          <h4 class="mb-3">Upcoming Events</h4>
+          {% if upcoming %}
+            {% for e in upcoming %}
+              <div class="mb-3 pb-3 border-bottom border-secondary-subtle">
+                <h5 class="mb-1">
+                  <a class="link-light text-decoration-none" href="{{ url_for('event_detail', slug=e.slug) }}">
+                    {{ e.title }}
+                  </a>
+                </h5>
+                <div class="small text-secondary">
+                  {{ e.date.strftime('%d %b %Y, %I:%M %p') if e.date }}
                 </div>
-                <div class="mt-2 mt-md-0">
-                  <span class="badge bg-primary">{{ e.date.strftime('%d %b %Y, %I:%M %p') }}</span>
-                  {% if e.venue %}<span class="badge bg-secondary">{{ e.venue }}</span>{% endif %}
-                  {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode }}</span>{% endif %}
-                </div>
-              </li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <div class="text-muted">No upcoming events yet.</div>
-            {% endif %}
-          </div>
+                {% if e.venue %}<span class="badge bg-secondary me-2">{{ e.venue }}</span>{% endif %}
+                {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode }}</span>{% endif %}
+                {% if loop.last == false %}{% endif %}
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-secondary mb-0">No upcoming events yet.</p>
+          {% endif %}
         </div>
       </div>
+    </div>
 
-      <div class="col-12 col-lg-5">
-        <div class="card shadow-sm h-100">
-          <div class="card-body">
-            <h5 class="card-title mb-4">Latest Announcements</h5>
-            {% if announcements %}
-            <ul class="list-group list-group-flush">
+    <div class="col-md-5">
+      <div class="card bg-dark-subtle border-0 shadow-sm">
+        <div class="card-body">
+          <h4 class="mb-3">Latest Announcements</h4>
+          {% if announcements %}
+            <ul class="list-unstyled mb-0">
               {% for b in announcements %}
-              <li class="list-group-item py-3">
-                <a href="{{ url_for('blog_detail', slug=b.slug) }}" class="text-decoration-none fw-semibold">{{ b.title }}</a>
-                <div class="small text-muted mt-1">{{ b.excerpt }}</div>
-              </li>
+                <li class="mb-2">
+                  <a class="link-light text-decoration-none" href="{{ url_for('blog_detail', slug=b.slug) }}">
+                    {{ b.title }}
+                  </a>
+                </li>
               {% endfor %}
             </ul>
-            {% else %}
-            <div class="text-muted">Nothing to show yet.</div>
-            {% endif %}
-          </div>
+          {% else %}
+            <p class="text-secondary mb-0">Nothing to show yet.</p>
+          {% endif %}
         </div>
       </div>
-
     </div>
   </div>
 </div>

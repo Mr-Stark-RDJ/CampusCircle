@@ -2,47 +2,33 @@ import os, re, secrets, string, smtplib, requests
 from email.message import EmailMessage
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
+from flask import Flask, render_template, request, redirect, url_for, session, flash, abort, g
 from pymongo import MongoClient, ASCENDING, DESCENDING
-from bson import ObjectId
+from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
 from utils.otp import make_otp
-from dotenv import load_dotenv  # <-- NEW
 
-# ---------- App & DB ----------
-load_dotenv()  # <-- NEW: load .env from project root
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "dev-secret")
 
 MONGO_URL = os.getenv("MONGO_URL")
 if not MONGO_URL:
-    raise RuntimeError(
-        "MONGO_URL is not set. Put it in your .env (with ?authSource=admin) "
-        "or export it in the environment."
-    )
-
+    raise RuntimeError("MONGO_URL is not set.")
 print("[DB] Using MONGO_URL:", re.sub(r":([^@/]+)@", ":****@", MONGO_URL))
 
 client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
 client.admin.command("ping")
 db = client["campus_circle"]
-users = db["users"]
-events = db["events"]
-otps = db["otps"]          # registration OTPs
-resets = db["resets"]      # password reset OTP / tokens
-contacts = db["contacts"]
-
-REQUIRED_PROFILE_FIELDS = ("name", "year", "branch", "company", "phone", "linkedin")
-
+users = db.users
 events = db.events
 blogs = db.blogs
-users = db.users
 otps = db.otps
 resets = db.resets
-email_changes = db.email_changes  # NEW
-
-# ---------- Env mail / admin ----------
+email_changes = db.email_changes
+contacts = db.contacts
 
 SMTP_HOST = os.getenv("BREVO_SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("BREVO_SMTP_PORT", "587"))
@@ -56,8 +42,6 @@ ADMIN_NOTIFY_EMAIL = os.getenv("ADMIN_NOTIFY_EMAIL", EMAIL_FROM)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3:mini")
 
-# ---------- Time helpers (aware UTC everywhere) ----------
-
 def utcnow():
     return datetime.now(timezone.utc)
 
@@ -68,10 +52,8 @@ def as_aware_utc(dt):
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
-# ---------- Validators (server-side, per OWASP) ----------
-
-NAME_RE = re.compile(r"^[A-Za-z][A-Za-z '’.-]{1,49}$")  # 2–50 chars, allow apostrophes/hyphens
-PHONE_RE = re.compile(r"^\+?[1-9]\d{7,14}$")           # E.164: 8–15 digits, country code ≠ 0
+NAME_RE = re.compile(r"^[A-Za-z][A-Za-z '’.-]{1,49}$")
+PHONE_RE = re.compile(r"^\+?[1-9]\d{7,14}$")
 LINKEDIN_RE = re.compile(r"^https?://(www\.)?linkedin\.com/(in|company)/[A-Za-z0-9\-_%]+/?$")
 
 def validate_profile_fields(data):
@@ -82,9 +64,6 @@ def validate_profile_fields(data):
     phone = data.get("phone", "").strip()
     if phone and not PHONE_RE.fullmatch(phone):
         errs.append("Phone must be E.164 (like +14155552671)")
-    mobile = data.get("mobile", "").strip()
-    if mobile and not PHONE_RE.fullmatch(mobile):
-        errs.append("Mobile must be E.164 (like +14155552671)")
     linkedin = data.get("linkedin", "").strip()
     if linkedin and not LINKEDIN_RE.fullmatch(linkedin):
         errs.append("LinkedIn must look like https://linkedin.com/in/username")
@@ -97,8 +76,6 @@ def validate_profile_fields(data):
             if y < 1950 or y > 2099:
                 errs.append("Graduation year out of range")
     return errs
-
-# ---------- Utilities ----------
 
 def generate_otp():
     return "".join(secrets.choice(string.digits) for _ in range(6))
@@ -129,7 +106,6 @@ def send_mail(to_email, subject, body):
         s.login(SMTP_USER, SMTP_PASS)
         s.send_message(msg)
 
-
 def _emailchange_doc(uid, new_email):
     return email_changes.find_one({"user_id": ObjectId(uid), "new_email": new_email})
 
@@ -139,56 +115,54 @@ def require_login():
 def require_admin():
     return session.get("is_admin") is True
 
-def is_profile_complete(u: dict | None) -> bool:
+REQUIRED_RANGE = (1950, 2099)
+
+def is_profile_complete(u):
     if not u:
         return False
-    for k in REQUIRED_PROFILE_FIELDS:
-        v = u.get(k)
-        if not v or (isinstance(v, str) and not v.strip()):
-            return False
+    if not (u.get("full_name") and u.get("branch")):
+        return False
+    y = u.get("graduation_year")
+    if not isinstance(y, int) or not (REQUIRED_RANGE[0] <= y <= REQUIRED_RANGE[1]):
+        return False
+    phone = (u.get("phone") or "").strip()
+    if not PHONE_RE.fullmatch(phone):
+        return False
+    linkedin = (u.get("linkedin") or "").strip()
+    if not LINKEDIN_RE.fullmatch(linkedin):
+        return False
     return True
-
-_PROFILE_WHITELIST = {
-    "static", "home", "about", "contact",
-    "alumni", "alumni_page", "alumni_detail",
-    "blog", "blog_list", "blog_detail",
-    "login", "logout", "register", "verify",
-    "forgot_password", "reset_password",
-    "change_email", "change_email_verify",
-    "profile"  # allow accessing the profile editor
-}
-
-# ---------- Routes: Core ----------
 
 @app.before_request
 def enforce_profile_completion():
-    if request.endpoint in (None, "static"):
+    g.profile_incomplete = False
+    if request.path.startswith("/static"):
         return
-
-    if request.path.startswith("/admin"):
+    if not require_login():
         return
-
-    user_id = session.get("user_id")
-    user_email = session.get("user_email") or session.get("email")
-
-    if not (user_id or user_email):
+    allowed = {
+        url_for("profile"),
+        url_for("logout"),
+        url_for("change_email"),
+        url_for("change_email_verify"),
+        url_for("change_email_verify_post"),
+        url_for("change_email_resend"),
+    }
+    if request.path.startswith("/admin/login"):
         return
-
-    if request.endpoint in _PROFILE_WHITELIST:
-        return
-
-    u = None
-    if user_id:
-        try:
-            u = users.find_one({"_id": ObjectId(user_id)})
-        except Exception:
-            u = None
-    if not u and user_email:
-        u = users.find_one({"email": user_email})
-
+    u = users.find_one(
+        {"_id": ObjectId(session["user_id"])},
+        {"full_name": 1, "branch": 1, "graduation_year": 1, "phone": 1, "linkedin": 1, "company": 1},
+    )
     if not is_profile_complete(u):
-        flash("Please complete your profile to continue.", "warning")
-        return redirect(url_for("profile"))
+        g.profile_incomplete = True
+        if (request.path not in allowed) and (not request.path.startswith("/admin")):
+            if not session.get("_pc_notice"):
+                flash("Please complete your profile to continue.", "warning")
+                session["_pc_notice"] = True
+            return redirect(url_for("profile"))
+    else:
+        session.pop("_pc_notice", None)
 
 @app.route("/")
 def home():
@@ -197,14 +171,12 @@ def home():
     today = utcnow()
     upcoming = list(events.find({"published": True, "date": {"$gte": today}})
                     .sort("date", ASCENDING).limit(6))
-    announcements = []
     try:
         announcements = list(blogs.find({"published": True})
                              .sort("created_at", DESCENDING).limit(6))
     except Exception:
         announcements = []
     return render_template("home.html", upcoming=upcoming, announcements=announcements)
-
 
 @app.route("/settings/email", methods=["GET","POST"])
 def change_email():
@@ -218,7 +190,6 @@ def change_email():
             flash("Incorrect password.", "danger"); return redirect(url_for("change_email"))
         if not new_email or "@" not in new_email:
             flash("Enter a valid email.", "danger"); return redirect(url_for("change_email"))
-
         now = utcnow()
         doc = _emailchange_doc(session["user_id"], new_email)
         if doc:
@@ -226,7 +197,6 @@ def change_email():
             if last_sent and now - last_sent < timedelta(seconds=60):
                 flash("Please wait before resending OTP.", "warning")
                 return redirect(url_for("change_email_verify", new_email=new_email))
-
         code = make_otp()
         email_changes.update_one(
             {"user_id": ObjectId(session["user_id"]), "new_email": new_email},
@@ -240,7 +210,8 @@ def change_email():
         )
         try:
             send_mail(new_email, "Verify your new email", f"Your OTP is {code}. It expires in 10 minutes.")
-        except Exception: pass
+        except Exception:
+            pass
         flash("OTP sent to the new email.", "info")
         return redirect(url_for("change_email_verify", new_email=new_email))
     return render_template("settings_email.html")
@@ -275,11 +246,12 @@ def change_email_verify_post():
         email_changes.update_one({"_id": doc["_id"]}, upd)
         flash("Invalid OTP.", "danger")
         return redirect(url_for("change_email_verify", new_email=new_email))
-
     users.update_one({"_id": ObjectId(session["user_id"])}, {"$set":{"personal_email": new_email}})
     email_changes.delete_one({"_id": doc["_id"]})
     flash("Email updated.", "success")
-    return redirect(url_for("profile"))
+    u_now = users.find_one({"_id": ObjectId(session["user_id"])},
+                           {"full_name":1,"branch":1,"graduation_year":1,"phone":1,"linkedin":1,"company":1})
+    return redirect(url_for("home" if is_profile_complete(u_now) else "profile"))
 
 @app.get("/settings/email/resend")
 def change_email_resend():
@@ -302,13 +274,10 @@ def change_email_resend():
     )
     try:
         send_mail(new_email, "Verify your new email", f"Your OTP is {code}. It expires in 10 minutes.")
-    except Exception: pass
+    except Exception:
+        pass
     flash("OTP resent.", "info")
     return redirect(url_for("change_email_verify", new_email=new_email))
-
-
-
-# ---------- Routes: Alumni (PUBLIC) ----------
 
 @app.route("/alumni")
 def alumni():
@@ -320,7 +289,6 @@ def alumni():
     if per_page not in (10, 25, 50): per_page = 10
     try: page = max(1, int(request.args.get("page", "1")))
     except: page = 1
-
     filt = {"verified_at": {"$ne": None}}
     ors = []
     if q:
@@ -329,11 +297,9 @@ def alumni():
     if ors: filt["$or"] = ors
     if year.isdigit(): filt["graduation_year"] = int(year)
     if branch: filt["branch"] = {"$regex": f"^{re.escape(branch)}$", "$options": "i"}
-
     total = users.count_documents(filt)
     skip = (page - 1) * per_page
     cur = users.find(filt).sort([("graduation_year", DESCENDING), ("full_name", ASCENDING)]).skip(skip).limit(per_page)
-
     rows = []
     for u in cur:
         rows.append({
@@ -344,12 +310,9 @@ def alumni():
             "company": u.get("company") or "",
             "linkedin": u.get("linkedin") or "",
         })
-
     pages = (total + per_page - 1) // per_page
     return render_template("alumni.html", rows=rows, q=q, year=year, branch=branch,
                            page=page, pages=pages, per_page=per_page, total=total)
-
-# ---------- Routes: Auth (login / register + OTP verify) ----------
 
 @app.route("/login", methods=["GET","POST"])
 def login():
@@ -364,7 +327,6 @@ def login():
         flash("Invalid credentials.", "danger")
         return redirect(url_for("login"))
     return render_template("auth_login.html")
-
 
 @app.route("/logout")
 def logout():
@@ -434,8 +396,6 @@ def verify():
         return redirect(url_for("profile"))
     return render_template("auth_verify.html", email=email)
 
-# ---------- Routes: Forgot / Reset (two-step with OTP + token) ----------
-
 @app.route("/forgot", methods=["GET", "POST"])
 def forgot():
     if request.method == "POST":
@@ -484,7 +444,7 @@ def verify_reset():
         if not exp or now > exp:
             resets.delete_one({"_id": doc["_id"]})
             flash("OTP expired.", "danger")
-            return redirect(url_for("forgot", email=email))
+            return redirect(url_for("forgot"))
         if not check_password_hash(doc["otp_hash"], otp):
             attempts = int(doc.get("attempts",0)) + 1
             upd = {"$set":{"attempts": attempts}}
@@ -497,41 +457,6 @@ def verify_reset():
         resets.update_one({"_id": doc["_id"]}, {"$set":{"token": token, "token_expires": now + timedelta(minutes=10)}})
         return redirect(url_for("password_reset", token=token))
     return render_template("auth_reset_verify.html", email=email)
-
-@app.post("/verify/resend")
-def verify_resend():
-    college_email = (request.args.get("email") or request.form.get("college_email") or "").strip().lower()
-    if not college_email:
-        flash("Start registration again.", "danger")
-        return redirect(url_for("register"))
-
-    rec = otps.find_one({"college_email": college_email})
-    if not rec:
-        flash("Start registration again.", "danger")
-        return redirect(url_for("register"))
-
-    # 60s throttle
-    last = rec.get("last_sent")
-    now = datetime.now(timezone.utc)
-    if last and (now - (last if last.tzinfo else last.replace(tzinfo=timezone.utc))).total_seconds() < 60:
-        flash("Please wait before resending.", "warning")
-        return redirect(url_for("verify", email=college_email))
-
-    code = make_otp()
-    otps.update_one(
-        {"_id": rec["_id"]},
-        {"$set": {
-            "otp_hash": generate_password_hash(code),
-            "expires_at": now + timedelta(minutes=10),
-            "last_sent": now
-        }}
-    )
-    try:
-        send_mail(college_email, "Campus Circle – Verify your email", f"Your OTP is {code}. It expires in 10 minutes.")
-    except Exception:
-        pass
-    flash("OTP resent.", "info")
-    return redirect(url_for("verify", email=college_email))
 
 @app.route("/reset/resend")
 def resend_reset():
@@ -598,8 +523,6 @@ def password_reset():
         return redirect(url_for("login"))
     return render_template("auth_reset_password.html")
 
-# ---------- Routes: Profile ----------
-
 @app.route("/profile", methods=["GET","POST"])
 def profile():
     if not require_login():
@@ -621,7 +544,6 @@ def profile():
         if errs:
             for e in errs: flash(e, "danger")
             return redirect(url_for("profile"))
-        yr = int(data["graduation_year"]) if data["graduation_year"].isdigit() else None
         users.update_one({"_id": u["_id"]}, {"$set":{
             "full_name": data["full_name"].strip() or None,
             "branch": data["branch"].strip() or None,
@@ -631,10 +553,10 @@ def profile():
             "linkedin": data["linkedin"].strip() or None,
         }})
         flash("Profile updated.", "success")
-        return redirect(url_for("profile"))
+        u_now = users.find_one({"_id": u["_id"]},
+                               {"full_name":1,"branch":1,"graduation_year":1,"phone":1,"linkedin":1,"company":1})
+        return redirect(url_for("home" if is_profile_complete(u_now) else "profile"))
     return render_template("profile.html", u=u)
-
-# ---------- Routes: Contact ----------
 
 @app.route("/contact", methods=["GET","POST"])
 def contact():
@@ -651,14 +573,9 @@ def contact():
         return redirect(url_for("contact"))
     return render_template("contact.html")
 
-# ---------- Routes: Static / About ----------
-
 @app.route("/about")
 def about():
     return render_template("about.html")
-
-# ---------- Routes: Events (detail) ----------
-
 
 @app.route("/blog")
 def blog_list():
@@ -681,7 +598,6 @@ def event_detail(slug):
         abort(404)
     return render_template("event_detail.html", e=e)
 
-
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     q = (request.json or {}).get("message","").strip()
@@ -703,7 +619,6 @@ def api_chat():
     except Exception:
         return {"ok": False, "answer": ""}, 500
 
-
 @app.route("/admin/login", methods=["GET","POST"])
 def admin_login():
     if request.method == "POST":
@@ -720,7 +635,6 @@ def admin_logout():
     session.pop("is_admin", None)
     flash("Admin logged out.", "info")
     return redirect(url_for("login"))
-# ---------- Routes: Admin ----------
 
 @app.route("/admin")
 def admin_index():
@@ -732,14 +646,12 @@ def admin_index():
 def admin_events():
     if not require_admin():
         return redirect(url_for("admin_login"))
-
     q = (request.args.get("q") or "").strip()
     try: per_page = int(request.args.get("n", "20"))
     except: per_page = 20
     if per_page not in (20, 50, 100): per_page = 20
     try: page = max(1, int(request.args.get("page", "1")))
     except: page = 1
-
     filt = {}
     if q:
         filt["$or"] = [
@@ -747,11 +659,9 @@ def admin_events():
             {"venue": {"$regex": re.escape(q), "$options": "i"}},
             {"mode": {"$regex": re.escape(q), "$options": "i"}},
         ]
-
     total = events.count_documents(filt)
     skip = (page - 1) * per_page
     cur = events.find(filt).sort("date", DESCENDING).skip(skip).limit(per_page)
-
     rows = []
     for e in cur:
         rows.append({
@@ -761,7 +671,6 @@ def admin_events():
             "date": e.get("date"),
             "published": bool(e.get("published")),
         })
-
     pages = (total + per_page - 1) // per_page
     return render_template("admin_events.html", events=rows, q=q, per_page=per_page, page=page, pages=pages, total=total)
 
@@ -823,25 +732,21 @@ def admin_event_delete(id):
 def admin_blogs():
     if not require_admin():
         return redirect(url_for("admin_login"))
-
     q = (request.args.get("q") or "").strip()
     try: per_page = int(request.args.get("n", "20"))
     except: per_page = 20
     if per_page not in (20, 50, 100): per_page = 20
     try: page = max(1, int(request.args.get("page", "1")))
     except: page = 1
-
     filt = {}
     if q:
         filt["$or"] = [
             {"title": {"$regex": re.escape(q), "$options": "i"}},
             {"body": {"$regex": re.escape(q), "$options": "i"}},
         ]
-
     total = blogs.count_documents(filt)
     skip = (page - 1) * per_page
     cur = blogs.find(filt).sort("created_at", DESCENDING).skip(skip).limit(per_page)
-
     rows = []
     for b in cur:
         rows.append({
@@ -851,7 +756,6 @@ def admin_blogs():
             "published": bool(b.get("published")),
             "created_at": b.get("created_at"),
         })
-
     pages = (total + per_page - 1) // per_page
     return render_template("admin_blogs.html", blogs=rows, q=q, per_page=per_page, page=page, pages=pages, total=total)
 
@@ -897,14 +801,12 @@ def admin_blog_delete(id):
 def admin_alumni():
     if not require_admin():
         return redirect(url_for("admin_login"))
-
     q = (request.args.get("q") or "").strip()
     try: per_page = int(request.args.get("n", "25"))
     except: per_page = 25
     if per_page not in (25, 50, 100): per_page = 25
     try: page = max(1, int(request.args.get("page", "1")))
     except: page = 1
-
     filt = {}
     ors = []
     if q:
@@ -918,11 +820,9 @@ def admin_alumni():
             {"company": {"$regex": re.escape(q), "$options": "i"}},
         ])
     if ors: filt["$or"] = ors
-
     total = users.count_documents(filt)
     skip = (page - 1) * per_page
     cur = users.find(filt).sort("created_at", DESCENDING).skip(skip).limit(per_page)
-
     rows = []
     for u in cur:
         rows.append({
@@ -934,7 +834,6 @@ def admin_alumni():
             "branch": u.get("branch") or "",
             "company": u.get("company") or "",
         })
-
     pages = (total + per_page - 1) // per_page
     return render_template("admin_alumni.html", rows=rows, q=q, per_page=per_page, page=page, pages=pages, total=total)
 
@@ -945,8 +844,6 @@ def admin_alumni_delete(id):
     users.delete_one({"_id": ObjectId(id)})
     flash("Alumnus deleted.", "warning")
     return redirect(url_for("admin_alumni"))
-
-# ---------- Run ----------
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
