@@ -119,3 +119,10 @@ input[placeholder*="Ask about events"], input[placeholder*="alumni, register"] {
   min-height: 40px;
   cursor: pointer;
 }
+
+/* brand logo sizing */
+.navbar .brand-logo{
+  height:28px; width:28px; border-radius:6px;
+  vertical-align:-6px; opacity:.95
+}
+.navbar .brand-logo:hover{ opacity:1 }

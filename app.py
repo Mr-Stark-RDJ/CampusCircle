@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, redirect, url_for, session, flash, abort
 from pymongo import MongoClient, ASCENDING, DESCENDING
-from bson.objectid import ObjectId
+from bson import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
 from utils.otp import make_otp
 from dotenv import load_dotenv  # <-- NEW
@@ -32,6 +32,8 @@ events = db["events"]
 otps = db["otps"]          # registration OTPs
 resets = db["resets"]      # password reset OTP / tokens
 contacts = db["contacts"]
+
+REQUIRED_PROFILE_FIELDS = ("name", "year", "branch", "company", "phone", "linkedin")
 
 events = db.events
 blogs = db.blogs
@@ -137,9 +139,56 @@ def require_login():
 def require_admin():
     return session.get("is_admin") is True
 
+def is_profile_complete(u: dict | None) -> bool:
+    if not u:
+        return False
+    for k in REQUIRED_PROFILE_FIELDS:
+        v = u.get(k)
+        if not v or (isinstance(v, str) and not v.strip()):
+            return False
+    return True
+
+_PROFILE_WHITELIST = {
+    "static", "home", "about", "contact",
+    "alumni", "alumni_page", "alumni_detail",
+    "blog", "blog_list", "blog_detail",
+    "login", "logout", "register", "verify",
+    "forgot_password", "reset_password",
+    "change_email", "change_email_verify",
+    "profile"  # allow accessing the profile editor
+}
+
 # ---------- Routes: Core ----------
 
+@app.before_request
+def enforce_profile_completion():
+    if request.endpoint in (None, "static"):
+        return
 
+    if request.path.startswith("/admin"):
+        return
+
+    user_id = session.get("user_id")
+    user_email = session.get("user_email") or session.get("email")
+
+    if not (user_id or user_email):
+        return
+
+    if request.endpoint in _PROFILE_WHITELIST:
+        return
+
+    u = None
+    if user_id:
+        try:
+            u = users.find_one({"_id": ObjectId(user_id)})
+        except Exception:
+            u = None
+    if not u and user_email:
+        u = users.find_one({"email": user_email})
+
+    if not is_profile_complete(u):
+        flash("Please complete your profile to continue.", "warning")
+        return redirect(url_for("profile"))
 
 @app.route("/")
 def home():

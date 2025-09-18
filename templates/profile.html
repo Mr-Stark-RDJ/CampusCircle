@@ -17,26 +17,26 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">Branch</label>
-              <input name="branch" class="form-control" value="{{ u.branch or '' }}" placeholder="CSE">
+              <input name="branch" class="form-control" value="{{ u.branch or '' }}" placeholder="CSE" required>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Graduation Year</label>
-              <input name="graduation_year" class="form-control" value="{{ u.graduation_year or '' }}" placeholder="2025" inputmode="numeric" pattern="\d{4}">
+              <input name="graduation_year" class="form-control" value="{{ u.graduation_year or '' }}" placeholder="2025" inputmode="numeric" pattern="\d{4}" required>
             </div>
             <div class="col-md-6">
               <label class="form-label">Company</label>
-              <input name="company" class="form-control" value="{{ u.company or '' }}" placeholder="Company">
+              <input name="company" class="form-control" value="{{ u.company or '' }}" placeholder="Company" required>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Phone</label>
-              <input name="phone" class="form-control" value="{{ u.phone or '' }}" placeholder="10-digit phone">
+              <input name="phone" class="form-control" value="{{ u.phone or '' }}" placeholder="10-digit phone" required>
             </div>
 
             <div class="col-12">
               <label class="form-label">LinkedIn</label>
-              <input name="linkedin" class="form-control" value="{{ u.linkedin or '' }}" placeholder="https://www.linkedin.com/in/...">
+              <input name="linkedin" class="form-control" value="{{ u.linkedin or '' }}" placeholder="https://www.linkedin.com/in/..." required>
             </div>
           </div>
 
