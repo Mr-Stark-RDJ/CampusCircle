@@ -1,60 +1,52 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}Campus Circle{% endblock %}</title>
 
-  <!-- Core CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=2">
+  <!-- Favicon -->
+  <link rel="icon" sizes="32x32" href="{{ url_for('static', filename='img/logo-mark.png') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo-mark.png') }}" />
 
-  <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32"
-        href="{{ url_for('static', filename='brand/campus-circle-32.png') }}?v=1">
-  <link rel="apple-touch-icon"
-        href="{{ url_for('static', filename='brand/campus-circle-180.png') }}?v=1">
+  <!-- Bootstrap (CSS only) -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet" />
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
-<body class="bg-dark text-light d-flex flex-column min-vh-100">
+<body class="bg-dk text-light">
 
-  <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom">
-    <div class="container">
-      <a class="navbar-brand d-flex align-items-center" href="{{ url_for('home') }}">
-        <img class="brand-icon" alt="Campus Circle"
-             src="{{ url_for('static', filename='brand/campus-circle-32.png') }}">
-        <span>Campus Circle</span>
+  <!-- Top Nav -->
+  <nav class="cc-nav border-bottom">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="d-flex align-items-center gap-2 text-decoration-none brand" href="{{ url_for('home') }}">
+        <img class="brand-mark" src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="Campus Circle" />
+        <span class="brand-text">Campus Circle</span>
       </a>
 
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-
-      <div id="mainNav" class="collapse navbar-collapse">
-        <ul class="navbar-nav me-auto">
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('home') }}">Home</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('alumni') }}">Alumni</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('blog_list') }}">Blog</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('about') }}">About</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
-        </ul>
-
-        <ul class="navbar-nav ms-auto">
-          {% if session.get('user_id') %}
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Account</a>
-              <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
-                <li><a class="dropdown-item" href="{{ url_for('profile') }}">Profile</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('change_email') }}">Change email</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a></li>
-              </ul>
-            </li>
-          {% else %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}">Register</a></li>
-          {% endif %}
-        </ul>
-      </div>
+      <ul class="cc-menu">
+        <li><a href="{{ url_for('home') }}">Home</a></li>
+        <li><a href="{{ url_for('alumni') }}">Alumni</a></li>
+        <li><a href="{{ url_for('blog_list') }}">Blog</a></li>
+        <li><a href="{{ url_for('about') }}">About</a></li>
+        <li><a href="{{ url_for('contact') }}">Contact</a></li>
+        {% if session.get('user_id') %}
+          <li class="dropdown">
+            <button class="cc-dropbtn">Account ▾</button>
+            <div class="cc-dropdown">
+              <a href="{{ url_for('profile') }}">Profile</a>
+              <a href="{{ url_for('change_email') }}">Change email</a>
+              <a class="text-danger" href="{{ url_for('logout') }}">Logout</a>
+            </div>
+          </li>
+        {% else %}
+          <li><a href="{{ url_for('login') }}">Login</a></li>
+          <li><a href="{{ url_for('register') }}">Register</a></li>
+        {% endif %}
+      </ul>
     </div>
   </nav>
 
@@ -62,9 +54,9 @@
   <div class="container mt-3">
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% if msgs %}
-        {% for cat, msg in msgs %}
-          <div class="alert alert-{{ 'warning' if cat=='danger' else cat }} alert-dismissible fade show" role="alert">
-            {{ msg }}
+        {% for c, m in msgs %}
+          <div class="alert alert-{{ 'warning' if c=='danger' else c }} alert-dismissible fade show" role="alert">
+            {{ m }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
         {% endfor %}
@@ -73,24 +65,19 @@
   </div>
 
   <!-- Page content -->
-  <main class="flex-grow-1">
+  <main class="container my-4">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Footer -->
-  <footer class="mt-auto bg-dark border-top">
-    <div class="container d-flex justify-content-between align-items-center py-3 small text-secondary">
-      <div>© Campus Circle</div>
-      <div>Binary Breakers • Smart Education</div>
+  <footer class="cc-footer">
+    <div class="container d-flex justify-content-between align-items-center">
+      <span>© Campus Circle</span>
+      <span>Binary Breakers • Smart Education</span>
     </div>
   </footer>
 
-  <!-- (If you have a chatbot script, keep it; otherwise this does nothing.) -->
-  <script src="{{ url_for('static', filename='chatbot.js') }}?v=2" defer></script>
-
-  <!-- Bootstrap (only if you use it; safe to leave out if you already include elsewhere) -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-          integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-          crossorigin="anonymous"></script>
+  <!-- Bootstrap JS (for dismissible alerts / dropdown if you want it) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

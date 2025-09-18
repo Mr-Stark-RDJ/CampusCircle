@@ -2,59 +2,47 @@
 {% block title %}Home • Campus Circle{% endblock %}
 
 {% block content %}
-<div class="container my-4">
-  <!-- Bigger logo -->
-  <img class="hero-logo" alt="Campus Circle logo"
-       src="{{ url_for('static', filename='brand/campus-circle-mark-512.png') }}">
-
-  <div class="row g-4 mt-2">
-    <div class="col-md-7">
-      <div class="card bg-dark-subtle border-0 shadow-sm">
-        <div class="card-body">
-          <h4 class="mb-3">Upcoming Events</h4>
-          {% if upcoming %}
-            {% for e in upcoming %}
-              <div class="mb-3 pb-3 border-bottom border-secondary-subtle">
-                <h5 class="mb-1">
-                  <a class="link-light text-decoration-none" href="{{ url_for('event_detail', slug=e.slug) }}">
-                    {{ e.title }}
-                  </a>
-                </h5>
-                <div class="small text-secondary">
-                  {{ e.date.strftime('%d %b %Y, %I:%M %p') if e.date }}
-                </div>
-                {% if e.venue %}<span class="badge bg-secondary me-2">{{ e.venue }}</span>{% endif %}
-                {% if e.mode %}<span class="badge bg-info text-dark">{{ e.mode }}</span>{% endif %}
-                {% if loop.last == false %}{% endif %}
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card-cc">
+      <h5 class="mb-3">Upcoming Events</h5>
+      {% if upcoming %}
+        <ul class="list-unstyled m-0">
+          {% for e in upcoming %}
+            <li class="mb-3">
+              <a class="fw-semibold text-decoration-none" href="{{ url_for('event_detail', slug=e.slug) }}">{{ e.title }}</a>
+              <div class="small text-muted">
+                {{ e.date.astimezone().strftime('%d %b %Y, %I:%M %p') }}
+                {% if e.venue %} • {{ e.venue }}{% endif %}
+                {% if e.mode %} • {{ e.mode }}{% endif %}
               </div>
-            {% endfor %}
-          {% else %}
-            <p class="text-secondary mb-0">No upcoming events yet.</p>
-          {% endif %}
-        </div>
-      </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">No upcoming events yet.</div>
+      {% endif %}
     </div>
+  </div>
 
-    <div class="col-md-5">
-      <div class="card bg-dark-subtle border-0 shadow-sm">
-        <div class="card-body">
-          <h4 class="mb-3">Latest Announcements</h4>
-          {% if announcements %}
-            <ul class="list-unstyled mb-0">
-              {% for b in announcements %}
-                <li class="mb-2">
-                  <a class="link-light text-decoration-none" href="{{ url_for('blog_detail', slug=b.slug) }}">
-                    {{ b.title }}
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p class="text-secondary mb-0">Nothing to show yet.</p>
-          {% endif %}
-        </div>
-      </div>
+  <div class="col-lg-5">
+    <div class="card-cc">
+      <h5 class="mb-3">Latest Announcements</h5>
+      {% if announcements %}
+        <ul class="list-unstyled m-0">
+          {% for b in announcements %}
+            <li class="mb-2">
+              <a class="text-decoration-none" href="{{ url_for('blog_detail', slug=b.slug) }}">{{ b.title }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="text-muted">Nothing to show yet.</div>
+      {% endif %}
     </div>
   </div>
 </div>
+
+<!-- Big logo centered -->
+<img class="hero-logo" src="{{ url_for('static', filename='img/logo-full.png') }}" alt="Campus Circle" />
 {% endblock %}
