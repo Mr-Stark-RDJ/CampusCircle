@@ -498,6 +498,41 @@ def verify_reset():
         return redirect(url_for("password_reset", token=token))
     return render_template("auth_reset_verify.html", email=email)
 
+@app.post("/verify/resend")
+def verify_resend():
+    college_email = (request.args.get("email") or request.form.get("college_email") or "").strip().lower()
+    if not college_email:
+        flash("Start registration again.", "danger")
+        return redirect(url_for("register"))
+
+    rec = otps.find_one({"college_email": college_email})
+    if not rec:
+        flash("Start registration again.", "danger")
+        return redirect(url_for("register"))
+
+    # 60s throttle
+    last = rec.get("last_sent")
+    now = datetime.now(timezone.utc)
+    if last and (now - (last if last.tzinfo else last.replace(tzinfo=timezone.utc))).total_seconds() < 60:
+        flash("Please wait before resending.", "warning")
+        return redirect(url_for("verify", email=college_email))
+
+    code = make_otp()
+    otps.update_one(
+        {"_id": rec["_id"]},
+        {"$set": {
+            "otp_hash": generate_password_hash(code),
+            "expires_at": now + timedelta(minutes=10),
+            "last_sent": now
+        }}
+    )
+    try:
+        send_mail(college_email, "Campus Circle – Verify your email", f"Your OTP is {code}. It expires in 10 minutes.")
+    except Exception:
+        pass
+    flash("OTP resent.", "info")
+    return redirect(url_for("verify", email=college_email))
+
 @app.route("/reset/resend")
 def resend_reset():
     email = request.args.get("email","").strip().lower()
